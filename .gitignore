@@ -1,0 +1,18 @@
+build/
+.cache/
+compile_commands.json
+.DS_Store
+*.user
+*.pro.user
+debug/
+release/
+bin/
+*.dylib
+*.dll
+*.so
+
+# Dependências externas (não commitar)
+deps/
+.venv/
+__pycache__/
+*.log
