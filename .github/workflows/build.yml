@@ -39,12 +39,6 @@ jobs:
         brew install cmake ninja qt@6 obs
         echo "/opt/homebrew/opt/qt6/bin" >> $GITHUB_PATH
 
-    - name: Debug Headers (macOS)
-      if: runner.os == 'macOS'
-      run: |
-        echo "Listing deps/obs-studio/UI content:"
-        ls -R deps/obs-studio/UI || echo "UI dir not found"
-
     - name: Build (macOS)
       if: runner.os == 'macOS'
       run: |
@@ -58,8 +52,18 @@ jobs:
     - name: Package (macOS)
       if: runner.os == 'macOS'
       run: |
-        cd build
-        zip -r ../auto-hide-scenes-macos.zip *.dylib
+        # Busca o arquivo .dylib em qualquer subpasta de build (Release ou raiz)
+        DYLIB=$(find build -name "*.dylib" -type f | head -n 1)
+
+        if [[ -z "$DYLIB" ]]; then
+           echo "::error::Nenhum arquivo .dylib encontrado em build/!"
+           ls -R build
+           exit 1
+        fi
+
+        echo "Arquivo encontrado: $DYLIB"
+        # Cria o zip na raiz do workspace (-j remove os caminhos de pasta do zip)
+        zip -j auto-hide-scenes-macos.zip "$DYLIB"
 
     - name: Install Qt (Windows)
       if: runner.os == 'Windows'
@@ -76,23 +80,23 @@ jobs:
       run: |
         $Url = "https://github.com/obsproject/obs-studio/releases/download/30.0.2/OBS-Studio-30.0.2.zip"
         $Output = "obs-studio.zip"
-        Write-Host "Downloading OBS binaries from $Url..."
         Invoke-WebRequest -Uri $Url -OutFile $Output
-
-        Write-Host "Extracting OBS binaries..."
         Expand-Archive -Path $Output -DestinationPath obs-binaries
 
     - name: Build (Windows)
       if: runner.os == 'Windows'
-      shell: cmd
+      shell: pwsh
       run: |
         mkdir build
         cd build
+        $RepoRoot = (Get-Item ..).FullName
+        $ObsLib = "$RepoRoot/obs-binaries/bin/64bit/obs.lib" -replace '\\', '/'
+        $FrontendLib = "$RepoRoot/obs-binaries/bin/64bit/obs-frontend-api.lib" -replace '\\', '/'
 
-        cmake .. ^
-          -DCMAKE_BUILD_TYPE=Release ^
-          -DLIBOBS_LIB="..\obs-binaries\bin\64bit\obs.lib" ^
-          -DOBS_FRONTEND_LIB="..\obs-binaries\bin\64bit\obs-frontend-api.lib"
+        cmake .. `
+          -DCMAKE_BUILD_TYPE=Release `
+          -DLIBOBS_LIB="$ObsLib" `
+          -DOBS_FRONTEND_LIB="$FrontendLib"
 
         cmake --build . --config Release
 
@@ -101,15 +105,12 @@ jobs:
       shell: pwsh
       run: |
         if (Test-Path build/Release/*.dll) {
-            Write-Host "Found DLL in build/Release/"
             cd build/Release
             Compress-Archive -Path *.dll -DestinationPath ..\..\auto-hide-scenes-windows.zip
         } elseif (Test-Path build/*.dll) {
-            Write-Host "Found DLL in build/"
             cd build
             Compress-Archive -Path *.dll -DestinationPath ..\auto-hide-scenes-windows.zip
         } else {
-            Write-Error "Could not find .dll to package"
             ls build -Recurse
             exit 1
         }
@@ -132,9 +133,6 @@ jobs:
         with:
           pattern: plugin-*
           merge-multiple: true
-
-      - name: Display structure of downloaded files
-        run: ls -R
 
       - name: Release
         uses: softprops/action-gh-release@v1
