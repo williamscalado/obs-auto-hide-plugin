@@ -34,6 +34,8 @@ jobs:
         cd deps
         git clone --depth 1 https://github.com/obsproject/obs-studio.git
         git clone --depth 1 https://github.com/simd-everywhere/simde.git
+        # Create missing generated header
+        echo "#define OBS_VERSION \"30.0.0\"" > obs-studio/libobs/obsconfig.h
 
     # -------------------------------------------------------------------------
     # SETUP MACOS
