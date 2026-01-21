@@ -1,0 +1,147 @@
+name: Build Plugin
+
+on:
+  push:
+    branches: [ "main", "master" ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    # -------------------------------------------------------------------------
+    # DEPENDENCIAS COMUNS (HEADERS)
+    # -------------------------------------------------------------------------
+    - name: Setup Headers (Common)
+      shell: bash
+      run: |
+        mkdir -p deps
+        cd deps
+        git clone --depth 1 https://github.com/obsproject/obs-studio.git
+        git clone --depth 1 https://github.com/simd-everywhere/simde.git
+
+    # -------------------------------------------------------------------------
+    # SETUP MACOS
+    # -------------------------------------------------------------------------
+    - name: Install Dependencies (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        brew install cmake ninja qt@6 obs
+        echo "/opt/homebrew/opt/qt6/bin" >> $GITHUB_PATH
+
+    - name: Build (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        mkdir build
+        cd build
+        cmake .. \
+          -DCMAKE_PREFIX_PATH="/opt/homebrew/opt/qt6;/opt/homebrew/opt/libobs" \
+          -DCMAKE_BUILD_TYPE=Release
+        cmake --build . --config Release
+
+    - name: Package (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        cd build
+        # Find the .dylib file and zip it
+        zip -r ../auto-hide-scenes-macos.zip *.dylib
+
+    # -------------------------------------------------------------------------
+    # SETUP WINDOWS
+    # -------------------------------------------------------------------------
+    - name: Install Qt (Windows)
+      if: runner.os == 'Windows'
+      uses: jurplel/install-qt-action@v3
+      with:
+        version: '6.6.0'
+        host: 'windows'
+        target: 'desktop'
+        arch: 'win64_msvc2019_64'
+
+    - name: Download OBS Libs (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        $Url = "https://github.com/obsproject/obs-studio/releases/download/30.0.2/OBS-Studio-30.0.2-Full-x64.zip"
+        $Output = "obs-studio.zip"
+        Invoke-WebRequest -Uri $Url -OutFile $Output
+        Expand-Archive -Path $Output -DestinationPath obs-binaries
+
+    - name: Build (Windows)
+      if: runner.os == 'Windows'
+      shell: cmd
+      run: |
+        mkdir build
+        cd build
+        
+        cmake .. ^
+          -DCMAKE_BUILD_TYPE=Release ^
+          -DLIBOBS_LIB="%GITHUB_WORKSPACE%/obs-binaries/bin/64bit/obs.lib" ^
+          -DOBS_FRONTEND_LIB="%GITHUB_WORKSPACE%/obs-binaries/bin/64bit/obs-frontend-api.lib"
+
+        cmake --build . --config Release
+
+    - name: Package (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        # Try to find the dll in build/Release (MSVC) or build/ (Ninja/others)
+        if (Test-Path build/Release/*.dll) {
+            cd build/Release
+            Compress-Archive -Path *.dll -DestinationPath ..\..\auto-hide-scenes-windows.zip
+        } elseif (Test-Path build/*.dll) {
+            cd build
+            Compress-Archive -Path *.dll -DestinationPath ..\auto-hide-scenes-windows.zip
+        } else {
+            Write-Error "Could not find .dll to package"
+        }
+
+    # -------------------------------------------------------------------------
+    # UPLOAD ARTIFACTS
+    # -------------------------------------------------------------------------
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: plugin-${{ matrix.os }}
+        path: auto-hide-scenes-*.zip
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    
+    steps:
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: plugin-*
+          merge-multiple: true
+          
+      - name: Display structure of downloaded files
+        run: ls -R
+
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            auto-hide-scenes-macos.zip
+            auto-hide-scenes-windows.zip
+          draft: false
+          prerelease: false
+          generate_release_notes: true
