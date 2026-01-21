@@ -29,7 +29,7 @@ if(APPLE)
                  # Fallback
                  set(OBS_FRONTEND_INCLUDE_DIR "${HOMEBREW_PREFIX}/include/obs")
             endif()
-            
+
             message(STATUS "Using Homebrew OBS headers at: ${LIBOBS_INCLUDE_DIR}")
         endif()
     else()
@@ -38,11 +38,11 @@ if(APPLE)
     endif()
 
     set(SIMDE_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/deps/simde")
-    
+
     # Debug print
     message(STATUS "DEBUG: LIBOBS_INCLUDE_DIR=${LIBOBS_INCLUDE_DIR}")
     message(STATUS "DEBUG: OBS_FRONTEND_INCLUDE_DIR=${OBS_FRONTEND_INCLUDE_DIR}")
-    
+
     if(NOT EXISTS "${OBS_FRONTEND_INCLUDE_DIR}/obs-frontend-api.h")
          message(WARNING "obs-frontend-api.h NOT FOUND at ${OBS_FRONTEND_INCLUDE_DIR}")
          # Tenta listar diretorio para debug
@@ -51,7 +51,7 @@ if(APPLE)
     endif()
 
     include_directories(${LIBOBS_INCLUDE_DIR} ${SIMDE_INCLUDE_DIR} ${OBS_FRONTEND_INCLUDE_DIR})
-    
+
     # Link directly to the installed OBS framework or dylib
     # Verifica se existe no path padrao
     if(EXISTS "/Applications/OBS.app/Contents/Frameworks/libobs.framework")
@@ -77,15 +77,33 @@ else()
     if(NOT LibObs_FOUND)
         message(STATUS "LibObs package not found. Attempting manual configuration using 'deps/' and provided vars...")
 
-        # 1. Headers from local deps
-        set(LIBOBS_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/deps/obs-studio/libobs")
-        set(OBS_FRONTEND_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/deps/obs-studio/UI/obs-frontend-api")
-        set(SIMDE_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/deps/simde")
+        # 1. Headers from local deps or provided variables
+        if(DEFINED LIBOBS_INCLUDE_DIR AND DEFINED OBS_FRONTEND_INCLUDE_DIR AND DEFINED SIMDE_INCLUDE_DIR)
+            # Use provided paths (from cmake -D flags)
+            message(STATUS "Using provided include directories:")
+            message(STATUS "  LIBOBS_INCLUDE_DIR: ${LIBOBS_INCLUDE_DIR}")
+            message(STATUS "  OBS_FRONTEND_INCLUDE_DIR: ${OBS_FRONTEND_INCLUDE_DIR}")
+            message(STATUS "  SIMDE_INCLUDE_DIR: ${SIMDE_INCLUDE_DIR}")
+        else()
+            # Fallback to deps/ subdirectory
+            set(LIBOBS_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/deps/obs-studio/libobs")
+            set(OBS_FRONTEND_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/deps/obs-studio/UI/obs-frontend-api")
+            set(SIMDE_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/deps/simde")
+            message(STATUS "Using fallback deps/ directories")
+        endif()
 
         if(EXISTS "${LIBOBS_INCLUDE_DIR}" AND EXISTS "${SIMDE_INCLUDE_DIR}")
             include_directories(${LIBOBS_INCLUDE_DIR} ${SIMDE_INCLUDE_DIR} ${OBS_FRONTEND_INCLUDE_DIR})
+            message(STATUS "Successfully configured include directories")
+
+            # Debug: Verify frontend header exists
+            if(NOT EXISTS "${OBS_FRONTEND_INCLUDE_DIR}/obs-frontend-api.h")
+                message(WARNING "obs-frontend-api.h NOT FOUND at ${OBS_FRONTEND_INCLUDE_DIR}")
+            else()
+                message(STATUS "Found obs-frontend-api.h at ${OBS_FRONTEND_INCLUDE_DIR}")
+            endif()
         else()
-            message(FATAL_ERROR "LibObs headers not found in 'deps/'. Run 'git clone ...' inside deps/.")
+            message(FATAL_ERROR "LibObs headers not found. Checked: ${LIBOBS_INCLUDE_DIR}")
         endif()
     endif()
 endif()
@@ -116,6 +134,9 @@ if(NOT APPLE)
     else()
         # Fallback: Link against manually provided libraries (set via -DLIBOBS_LIB=...)
         if(LIBOBS_LIB AND OBS_FRONTEND_LIB)
+            message(STATUS "Linking against provided libraries:")
+            message(STATUS "  LIBOBS_LIB: ${LIBOBS_LIB}")
+            message(STATUS "  OBS_FRONTEND_LIB: ${OBS_FRONTEND_LIB}")
             target_link_libraries(${PROJECT_NAME} PRIVATE ${LIBOBS_LIB} ${OBS_FRONTEND_LIB})
         else()
             message(FATAL_ERROR "LibObs libraries not defined. Please set -DLIBOBS_LIB and -DOBS_FRONTEND_LIB.")
