@@ -24,6 +24,11 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
+    # Configura ambiente MSVC no Windows para ter acesso ao 'lib.exe' e 'dumpbin.exe'
+    - name: Setup MSVC (Windows)
+      if: runner.os == 'Windows'
+      uses: ilammy/msvc-dev-cmd@v1
+
     # -------------------------------------------------------------------------
     # DEPENDENCIAS COMUNS (HEADERS)
     # -------------------------------------------------------------------------
@@ -32,7 +37,7 @@ jobs:
       run: |
         mkdir -p deps
         cd deps
-        # Clona a tag exata 30.0.2 para garantir compatibilidade com os binários
+        # Clona a tag exata 30.0.2 para garantir compatibilidade
         git clone --depth 1 --branch 30.0.2 https://github.com/obsproject/obs-studio.git
         git clone --depth 1 https://github.com/simd-everywhere/simde.git
         echo "#define OBS_VERSION \"30.0.2\"" > obs-studio/libobs/obsconfig.h
@@ -59,7 +64,7 @@ jobs:
     - name: Package (macOS)
       if: runner.os == 'macOS'
       run: |
-        # Procura por .dylib ou .so (o log indicou que gerou .so)
+        # Procura por .dylib ou .so
         LIB_FILE=$(find build -type f \( -name "*.dylib" -o -name "*.so" \) | head -n 1)
 
         if [[ -z "$LIB_FILE" ]]; then
@@ -69,7 +74,6 @@ jobs:
         fi
 
         echo "Arquivo encontrado: $LIB_FILE"
-        # -j remove os caminhos de diretório, salvando apenas o arquivo na raiz do zip
         zip -j auto-hide-scenes-macos.zip "$LIB_FILE"
 
     # -------------------------------------------------------------------------
@@ -84,14 +88,57 @@ jobs:
         target: 'desktop'
         arch: 'win64_msvc2019_64'
 
-    - name: Download OBS Binaries (Windows)
+    - name: Download & Generate OBS Libs (Windows)
       if: runner.os == 'Windows'
       shell: pwsh
       run: |
+        # 1. Baixa o ZIP oficial (contém DLLs, mas não LIBs)
         $Url = "https://github.com/obsproject/obs-studio/releases/download/30.0.2/OBS-Studio-30.0.2.zip"
         $Output = "obs-studio.zip"
         Invoke-WebRequest -Uri $Url -OutFile $Output
         Expand-Archive -Path $Output -DestinationPath obs-binaries
+
+        # 2. Define função para gerar .lib a partir da .dll
+        $BinDir = "obs-binaries/bin/64bit"
+
+        function Generate-Lib {
+            param($Name)
+            $Dll = "$BinDir/$Name.dll"
+            $Lib = "$BinDir/$Name.lib"
+            $Def = "$BinDir/$Name.def"
+
+            if (-not (Test-Path $Dll)) {
+                Write-Error "DLL $Dll not found!"
+                return
+            }
+
+            Write-Host "Generating .lib for $Name from $Dll..."
+
+            # Usa dumpbin para listar exports e regex para pegar os nomes das funções
+            # Padrão típico do dumpbin: "   1    0 00012345 FunctionName"
+            $dump = cmd /c "dumpbin /exports $Dll"
+            $exports = $dump | Select-String "^\s+\d+\s+[0-9a-fA-F]+\s+[0-9a-fA-F]+\s+(.+)$"
+
+            if (-not $exports) {
+                Write-Error "No exports found for $Name"
+                return
+            }
+
+            "EXPORTS" | Out-File -FilePath $Def -Encoding ASCII
+            foreach ($match in $exports) {
+                $match.Matches.Groups[1].Value | Out-File -FilePath $Def -Append -Encoding ASCII
+            }
+
+            # Cria a lib usando o utilitário LIB do VS
+            cmd /c "lib /def:$Def /out:$Lib /machine:x64"
+
+            if (Test-Path $Lib) { Write-Host "Success: $Lib created." }
+            else { Write-Error "Failed to create $Lib" }
+        }
+
+        # 3. Gera as libs necessárias
+        Generate-Lib "obs"
+        Generate-Lib "obs-frontend-api"
 
     - name: Build (Windows)
       if: runner.os == 'Windows'
@@ -99,12 +146,13 @@ jobs:
       run: |
         mkdir build
         cd build
-        # Obtém caminho absoluto da raiz para evitar erros de ..
         $RepoRoot = (Get-Item ..).FullName
 
-        # Converte para barras normais (/) que o CMake prefere
+        # Agora as .lib existem porque as geramos no passo anterior
         $ObsLib = "$RepoRoot/obs-binaries/bin/64bit/obs.lib" -replace '\\', '/'
         $FrontendLib = "$RepoRoot/obs-binaries/bin/64bit/obs-frontend-api.lib" -replace '\\', '/'
+
+        Write-Host "Linking against: $ObsLib"
 
         cmake .. `
           -DCMAKE_BUILD_TYPE=Release `
