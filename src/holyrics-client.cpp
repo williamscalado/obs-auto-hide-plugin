@@ -148,6 +148,7 @@ bool HolyricsClient::detect_verse(const QString &raw_data) {
                 if (type.compare("MUSIC", Qt::CaseInsensitive) == 0) {
                     if (on_deactivation_requested && disable_in_music) {
                         on_deactivation_requested();
+                        return true;
                     }
                     return true;
                 }

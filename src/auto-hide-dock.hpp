@@ -20,7 +20,7 @@ public:
   ~AutoHideDockWidget() override;
 
   // Métodos de controle
-  void set_active(bool active);
+  void set_active(bool active, bool restore_state = true);
   void update_connection_status(bool connected);
   void update_last_event(bool verse_visible);
 

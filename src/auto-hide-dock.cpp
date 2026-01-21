@@ -118,7 +118,7 @@ void AutoHideDockWidget::update_sources_list() {
 
 void AutoHideDockWidget::on_toggle_clicked() { set_active(!plugin_active); }
 
-void AutoHideDockWidget::set_active(bool active) {
+void AutoHideDockWidget::set_active(bool active, bool restore_state) {
   if (active) {
     // Validações
     if (config.sources_to_hide.isEmpty()) {
@@ -133,7 +133,9 @@ void AutoHideDockWidget::set_active(bool active) {
   } else {
     plugin_active = false;
     holyrics_client->disconnect();
-    scene_controller->restore_previous_state();
+    if (restore_state) {
+        scene_controller->restore_previous_state();
+    }
   }
   update_ui_state();
 }

@@ -31,8 +31,14 @@ public:
 
     holyrics_client->on_deactivation_requested = [this]() {
         if (dock_widget) {
-            dock_widget->set_active(false);
-            blog(LOG_INFO, "[Auto Hide] Desativação automática solicitada (MUSIC detectado)");
+            // Se for música e estiver configurado para desativar:
+            // 1. Esconde as fontes (câmera), pois a letra deve estar na tela
+            scene_controller->hide_sources(config.sources_to_hide);
+            
+            // 2. Desativa o plugin SEM restaurar o estado (para manter escondido)
+            dock_widget->set_active(false, false);
+            
+            blog(LOG_INFO, "[Auto Hide] Desativação automática (MUSIC): Fontes ocultadas e plugin parado.");
         }
     };
   }
