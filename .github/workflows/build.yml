@@ -86,7 +86,7 @@ jobs:
       shell: pwsh
       run: |
         # Baixa os binários do OBS para obter as libs (.lib)
-        $Url = "https://github.com/obsproject/obs-studio/releases/download/30.0.2/obs-studio-30.0.2-windows-x64.zip"
+        $Url = "https://github.com/obsproject/obs-studio/releases/download/30.0.2/OBS-Studio-30.0.2.zip"
         $Output = "obs-studio.zip"
         Write-Host "Downloading OBS binaries from $Url..."
         Invoke-WebRequest -Uri $Url -OutFile $Output
