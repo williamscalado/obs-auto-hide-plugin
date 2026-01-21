@@ -24,15 +24,22 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
+    # -------------------------------------------------------------------------
+    # DEPENDENCIAS COMUNS (HEADERS)
+    # -------------------------------------------------------------------------
     - name: Setup Headers (Common)
       shell: bash
       run: |
         mkdir -p deps
         cd deps
+        # Clona a tag exata 30.0.2 para garantir compatibilidade com os binários
         git clone --depth 1 --branch 30.0.2 https://github.com/obsproject/obs-studio.git
         git clone --depth 1 https://github.com/simd-everywhere/simde.git
         echo "#define OBS_VERSION \"30.0.2\"" > obs-studio/libobs/obsconfig.h
 
+    # -------------------------------------------------------------------------
+    # MACOS STEPS
+    # -------------------------------------------------------------------------
     - name: Install Dependencies (macOS)
       if: runner.os == 'macOS'
       run: |
@@ -52,19 +59,22 @@ jobs:
     - name: Package (macOS)
       if: runner.os == 'macOS'
       run: |
-        # Busca o arquivo .dylib em qualquer subpasta de build (Release ou raiz)
-        DYLIB=$(find build -name "*.dylib" -type f | head -n 1)
+        # Procura por .dylib ou .so (o log indicou que gerou .so)
+        LIB_FILE=$(find build -type f \( -name "*.dylib" -o -name "*.so" \) | head -n 1)
 
-        if [[ -z "$DYLIB" ]]; then
-           echo "::error::Nenhum arquivo .dylib encontrado em build/!"
+        if [[ -z "$LIB_FILE" ]]; then
+           echo "::error::Nenhum arquivo de plugin (.dylib ou .so) encontrado!"
            ls -R build
            exit 1
         fi
 
-        echo "Arquivo encontrado: $DYLIB"
-        # Cria o zip na raiz do workspace (-j remove os caminhos de pasta do zip)
-        zip -j auto-hide-scenes-macos.zip "$DYLIB"
+        echo "Arquivo encontrado: $LIB_FILE"
+        # -j remove os caminhos de diretório, salvando apenas o arquivo na raiz do zip
+        zip -j auto-hide-scenes-macos.zip "$LIB_FILE"
 
+    # -------------------------------------------------------------------------
+    # WINDOWS STEPS
+    # -------------------------------------------------------------------------
     - name: Install Qt (Windows)
       if: runner.os == 'Windows'
       uses: jurplel/install-qt-action@v3
@@ -89,7 +99,10 @@ jobs:
       run: |
         mkdir build
         cd build
+        # Obtém caminho absoluto da raiz para evitar erros de ..
         $RepoRoot = (Get-Item ..).FullName
+
+        # Converte para barras normais (/) que o CMake prefere
         $ObsLib = "$RepoRoot/obs-binaries/bin/64bit/obs.lib" -replace '\\', '/'
         $FrontendLib = "$RepoRoot/obs-binaries/bin/64bit/obs-frontend-api.lib" -replace '\\', '/'
 
@@ -111,10 +124,14 @@ jobs:
             cd build
             Compress-Archive -Path *.dll -DestinationPath ..\auto-hide-scenes-windows.zip
         } else {
+            Write-Error "DLL não encontrada para empacotamento"
             ls build -Recurse
             exit 1
         }
 
+    # -------------------------------------------------------------------------
+    # UPLOAD & RELEASE
+    # -------------------------------------------------------------------------
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
