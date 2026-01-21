@@ -77,10 +77,21 @@ jobs:
       if: runner.os == 'Windows'
       shell: pwsh
       run: |
-        $Url = "https://github.com/obsproject/obs-studio/releases/download/30.0.2/OBS-Studio-30.0.2-Full-x64.zip"
+        # Baixa uma versão recente do OBS que contenha as libs (obs.lib)
+        # Usando OBS 30.0.2 como base
+        $Url = "https://github.com/obsproject/obs-studio/releases/download/30.0.2/OBS-Studio-30.0.2.zip"
         $Output = "obs-studio.zip"
         Invoke-WebRequest -Uri $Url -OutFile $Output
         Expand-Archive -Path $Output -DestinationPath obs-binaries
+        
+        # Verifica se as libs existem (debug)
+        if (Test-Path obs-binaries/bin/64bit) {
+            ls obs-binaries/bin/64bit
+        } else {
+            # Se não existir diretamente, pode estar dentro de uma subpasta
+            ls obs-binaries
+            ls obs-binaries/*
+        }
 
     - name: Build (Windows)
       if: runner.os == 'Windows'
