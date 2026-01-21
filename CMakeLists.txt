@@ -15,16 +15,60 @@ add_compile_definitions(QT_NO_VERSION_TAGGING)
 
 # Manual LibObs configuration for macOS (using local headers and installed App)
 if(APPLE)
-    set(LIBOBS_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/deps/obs-studio/libobs")
+    # Tenta encontrar via Homebrew primeiro se não existir em deps/
+    if(NOT EXISTS "${CMAKE_SOURCE_DIR}/deps/obs-studio/libobs")
+        set(HOMEBREW_PREFIX "/opt/homebrew")
+        if(EXISTS "${HOMEBREW_PREFIX}/include/obs")
+            set(LIBOBS_INCLUDE_DIR "${HOMEBREW_PREFIX}/include/obs")
+            # Frontend API geralmente fica junto ou em subpasta
+            # Tenta encontrar obs-frontend-api.h
+            file(GLOB_RECURSE FRONTEND_HEADER "${HOMEBREW_PREFIX}/include/obs/obs-frontend-api.h")
+            if(FRONTEND_HEADER)
+                get_filename_component(OBS_FRONTEND_INCLUDE_DIR ${FRONTEND_HEADER} DIRECTORY)
+            else()
+                 # Fallback
+                 set(OBS_FRONTEND_INCLUDE_DIR "${HOMEBREW_PREFIX}/include/obs")
+            endif()
+            
+            message(STATUS "Using Homebrew OBS headers at: ${LIBOBS_INCLUDE_DIR}")
+        endif()
+    else()
+        set(LIBOBS_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/deps/obs-studio/libobs")
+        set(OBS_FRONTEND_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/deps/obs-studio/UI/obs-frontend-api")
+    endif()
+
     set(SIMDE_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/deps/simde")
-    set(OBS_FRONTEND_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/deps/obs-studio/UI/obs-frontend-api")
     
+    # Debug print
+    message(STATUS "DEBUG: LIBOBS_INCLUDE_DIR=${LIBOBS_INCLUDE_DIR}")
+    message(STATUS "DEBUG: OBS_FRONTEND_INCLUDE_DIR=${OBS_FRONTEND_INCLUDE_DIR}")
+    
+    if(NOT EXISTS "${OBS_FRONTEND_INCLUDE_DIR}/obs-frontend-api.h")
+         message(WARNING "obs-frontend-api.h NOT FOUND at ${OBS_FRONTEND_INCLUDE_DIR}")
+         # Tenta listar diretorio para debug
+         execute_process(COMMAND ls -R "${CMAKE_SOURCE_DIR}/deps" OUTPUT_VARIABLE DEPS_LIST)
+         message(STATUS "Deps content: ${DEPS_LIST}")
+    endif()
+
     include_directories(${LIBOBS_INCLUDE_DIR} ${SIMDE_INCLUDE_DIR} ${OBS_FRONTEND_INCLUDE_DIR})
     
-    # Link directly to the installed OBS framework
-    set(LIBOBS_LIB "/Applications/OBS.app/Contents/Frameworks/libobs.framework")
-    set(OBS_FRONTEND_LIB "/Applications/OBS.app/Contents/Frameworks/obs-frontend-api.dylib")
-    link_libraries("-F/Applications/OBS.app/Contents/Frameworks" "-framework libobs" ${OBS_FRONTEND_LIB})
+    # Link directly to the installed OBS framework or dylib
+    # Verifica se existe no path padrao
+    if(EXISTS "/Applications/OBS.app/Contents/Frameworks/libobs.framework")
+        set(LIBOBS_LIB "/Applications/OBS.app/Contents/Frameworks/libobs.framework")
+        set(OBS_FRONTEND_LIB "/Applications/OBS.app/Contents/Frameworks/obs-frontend-api.dylib")
+        link_libraries("-F/Applications/OBS.app/Contents/Frameworks" "-framework libobs" ${OBS_FRONTEND_LIB})
+    else()
+        # Tenta Homebrew lib
+        set(LIBOBS_LIB "/opt/homebrew/lib/libobs.dylib")
+        set(OBS_FRONTEND_LIB "/opt/homebrew/lib/libobs-frontend-api.dylib") # Nome pode variar
+        if(EXISTS ${LIBOBS_LIB})
+             message(STATUS "Using Homebrew libs")
+             target_link_libraries(${PROJECT_NAME} PRIVATE ${LIBOBS_LIB} ${OBS_FRONTEND_LIB})
+        else()
+             message(WARNING "Could not find OBS libs on macOS. Build may fail.")
+        endif()
+    endif()
 else()
     # Windows/Linux: Try to find LibObs via standard package
     find_package(LibObs QUIET)

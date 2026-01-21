@@ -46,6 +46,12 @@ jobs:
         brew install cmake ninja qt@6 obs
         echo "/opt/homebrew/opt/qt6/bin" >> $GITHUB_PATH
 
+    - name: Debug Headers (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        echo "Listing deps/obs-studio/UI content:"
+        ls -R deps/obs-studio/UI || echo "UI dir not found"
+
     - name: Build (macOS)
       if: runner.os == 'macOS'
       run: |
