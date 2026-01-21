@@ -32,10 +32,47 @@ jobs:
       run: |
         mkdir -p deps
         cd deps
+
+        echo "=== Cloning OBS Studio repository ==="
         git clone --depth 1 https://github.com/obsproject/obs-studio.git
+
+        echo "=== Cloning SIMDE repository ==="
         git clone --depth 1 https://github.com/simd-everywhere/simde.git
+
+        echo "=== Searching for obs-frontend-api.h in cloned repo ==="
+        find obs-studio -name "obs-frontend-api.h" -type f || echo "obs-frontend-api.h not found in cloned repo"
+
+        echo "=== Creating UI/obs-frontend-api directory ==="
+        mkdir -p obs-studio/UI/obs-frontend-api
+
+        echo "=== Downloading obs-frontend-api.h directly from GitHub ==="
+        curl -L -o obs-studio/UI/obs-frontend-api/obs-frontend-api.h \
+          https://raw.githubusercontent.com/obsproject/obs-studio/master/UI/obs-frontend-api/obs-frontend-api.h
+
+        echo "=== Verifying downloaded header ==="
+        if [ -f obs-studio/UI/obs-frontend-api/obs-frontend-api.h ]; then
+            echo "✓ obs-frontend-api.h successfully downloaded"
+            ls -lh obs-studio/UI/obs-frontend-api/obs-frontend-api.h
+            echo "First 5 lines of the file:"
+            head -n 5 obs-studio/UI/obs-frontend-api/obs-frontend-api.h
+        else
+            echo "✗ FAILED to download obs-frontend-api.h"
+            exit 1
+        fi
+
+        echo "=== Verifying obs.h exists ==="
+        if [ -f obs-studio/libobs/obs.h ]; then
+            echo "✓ obs.h found"
+        else
+            echo "✗ obs.h NOT FOUND"
+            exit 1
+        fi
+
         # Create missing generated header
+        echo "=== Creating obsconfig.h ==="
         echo "#define OBS_VERSION \"30.0.0\"" > obs-studio/libobs/obsconfig.h
+
+        echo "=== Header setup complete ==="
 
     # -------------------------------------------------------------------------
     # SETUP MACOS
@@ -81,47 +118,108 @@ jobs:
         target: 'desktop'
         arch: 'win64_msvc2019_64'
 
-    - name: Download OBS Binaries (Windows)
+    - name: Setup OBS Libraries (Windows)
       if: runner.os == 'Windows'
       shell: pwsh
       run: |
-        # Baixa os binários do OBS para obter as libs (.lib)
-        $Url = "https://github.com/obsproject/obs-studio/releases/download/30.0.2/OBS-Studio-30.0.2.zip"
-        $Output = "obs-studio.zip"
-        Write-Host "Downloading OBS binaries from $Url..."
-        Invoke-WebRequest -Uri $Url -OutFile $Output
+        Write-Host "=== Creating stub libraries for Windows build ==="
 
-        Write-Host "Extracting OBS binaries..."
-        Expand-Archive -Path $Output -DestinationPath obs-binaries
+        # Cria diretório para as libs
+        New-Item -ItemType Directory -Force -Path "obs-libs"
 
-        # Verifica estrutura dos binários
-        Write-Host "Checking OBS binaries structure:"
-        if (Test-Path obs-binaries/bin/64bit) {
-            Write-Host "Found bin/64bit directory"
-            ls obs-binaries/bin/64bit
+        # Cria arquivo .def para obs.lib com as exportações necessárias
+        @"
+LIBRARY obs
+EXPORTS
+    obs_register_module
+    obs_module_ver
+    obs_current_module
+    obs_module_get_string
+    obs_get_version
+    obs_get_source_by_name
+    obs_source_get_name
+    obs_source_release
+    obs_frontend_get_current_scene
+    obs_scene_from_source
+    obs_sceneitem_get_source
+    obs_log
+"@ | Out-File -FilePath "obs-libs/obs.def" -Encoding ASCII
+
+        # Cria arquivo .def para obs-frontend-api.lib
+        @"
+LIBRARY obs-frontend-api
+EXPORTS
+    obs_frontend_add_dock
+    obs_frontend_remove_dock
+    obs_frontend_get_scenes
+    obs_frontend_set_current_scene
+    obs_frontend_get_current_scene
+    obs_frontend_add_event_callback
+    obs_frontend_remove_event_callback
+"@ | Out-File -FilePath "obs-libs/obs-frontend-api.def" -Encoding ASCII
+
+        # Encontra o lib.exe do MSVC
+        $LibExe = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.44.35207\bin\Hostx64\x64\lib.exe"
+
+        if (-not (Test-Path $LibExe)) {
+            Write-Host "Searching for lib.exe..."
+            $LibExe = Get-ChildItem -Path "C:\Program Files\Microsoft Visual Studio" -Recurse -Filter "lib.exe" |
+                      Where-Object { $_.FullName -match "Hostx64\\x64" } |
+                      Select-Object -First 1 -ExpandProperty FullName
+        }
+
+        Write-Host "Using lib.exe at: $LibExe"
+
+        # Cria as libs usando lib.exe
+        Set-Location obs-libs
+        & $LibExe /def:obs.def /out:obs.lib /machine:x64
+        & $LibExe /def:obs-frontend-api.def /out:obs-frontend-api.lib /machine:x64
+        Set-Location ..
+
+        Write-Host "`n=== Verifying created libraries ==="
+        if (Test-Path obs-libs/obs.lib) {
+            Write-Host "✓ obs.lib created successfully"
+            ls obs-libs/obs.lib
         } else {
-            Write-Host "bin/64bit not found, listing root:"
-            ls obs-binaries -Recurse | Select-Object -First 30
+            Write-Host "✗ FAILED to create obs.lib"
+            exit 1
+        }
+
+        if (Test-Path obs-libs/obs-frontend-api.lib) {
+            Write-Host "✓ obs-frontend-api.lib created successfully"
+            ls obs-libs/obs-frontend-api.lib
+        } else {
+            Write-Host "✗ FAILED to create obs-frontend-api.lib"
+            exit 1
         }
 
         # Verifica se os headers foram clonados
-        Write-Host "`nVerifying headers were cloned:"
+        Write-Host "`n=== Verifying headers were downloaded ==="
         if (Test-Path deps/obs-studio/libobs/obs.h) {
             Write-Host "✓ Found obs.h"
         } else {
             Write-Host "✗ obs.h NOT FOUND"
+            exit 1
         }
 
         if (Test-Path deps/obs-studio/UI/obs-frontend-api/obs-frontend-api.h) {
             Write-Host "✓ Found obs-frontend-api.h"
         } else {
             Write-Host "✗ obs-frontend-api.h NOT FOUND"
+            exit 1
         }
 
     - name: Build (Windows)
       if: runner.os == 'Windows'
       shell: cmd
       run: |
+        echo === CMake Configuration ===
+        echo LIBOBS_INCLUDE_DIR=%GITHUB_WORKSPACE%/deps/obs-studio/libobs
+        echo OBS_FRONTEND_INCLUDE_DIR=%GITHUB_WORKSPACE%/deps/obs-studio/UI/obs-frontend-api
+        echo SIMDE_INCLUDE_DIR=%GITHUB_WORKSPACE%/deps/simde
+        echo LIBOBS_LIB=%GITHUB_WORKSPACE%/obs-libs/obs.lib
+        echo OBS_FRONTEND_LIB=%GITHUB_WORKSPACE%/obs-libs/obs-frontend-api.lib
+
         mkdir build
         cd build
 
@@ -130,8 +228,8 @@ jobs:
           -DLIBOBS_INCLUDE_DIR="%GITHUB_WORKSPACE%/deps/obs-studio/libobs" ^
           -DOBS_FRONTEND_INCLUDE_DIR="%GITHUB_WORKSPACE%/deps/obs-studio/UI/obs-frontend-api" ^
           -DSIMDE_INCLUDE_DIR="%GITHUB_WORKSPACE%/deps/simde" ^
-          -DLIBOBS_LIB="%GITHUB_WORKSPACE%/obs-binaries/bin/64bit/obs.lib" ^
-          -DOBS_FRONTEND_LIB="%GITHUB_WORKSPACE%/obs-binaries/bin/64bit/obs-frontend-api.lib"
+          -DLIBOBS_LIB="%GITHUB_WORKSPACE%/obs-libs/obs.lib" ^
+          -DOBS_FRONTEND_LIB="%GITHUB_WORKSPACE%/obs-libs/obs-frontend-api.lib"
 
         cmake --build . --config Release
 
