@@ -34,7 +34,7 @@ if(APPLE)
         endif()
     else()
         set(LIBOBS_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/deps/obs-studio/libobs")
-        set(OBS_FRONTEND_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/deps/obs-studio/frontend/api")
+        set(OBS_FRONTEND_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/deps/obs-studio/UI/obs-frontend-api")
     endif()
 
     set(SIMDE_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/deps/simde")
@@ -82,7 +82,8 @@ else()
             # Use provided paths (from cmake -D flags)
             message(STATUS "Using provided include directories:")
             message(STATUS "  LIBOBS_INCLUDE_DIR: ${LIBOBS_INCLUDE_DIR}")
-            message(STATUS "  OBS_FRONTEND_INCLUDE_DIR: ${OBS_FRONTEND_INCLUDE_DIR}")
+            message(STATUS "  OBS_
+            END_INCLUDE_DIR: ${OBS_FRONTEND_INCLUDE_DIR}")
             message(STATUS "  SIMDE_INCLUDE_DIR: ${SIMDE_INCLUDE_DIR}")
         else()
             # Fallback to deps/ subdirectory
