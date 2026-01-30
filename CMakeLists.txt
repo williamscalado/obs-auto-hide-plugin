@@ -34,7 +34,7 @@ if(APPLE)
         endif()
     else()
         set(LIBOBS_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/deps/obs-studio/libobs")
-        set(OBS_FRONTEND_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/deps/obs-studio/UI/obs-frontend-api")
+        set(OBS_FRONTEND_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/deps/obs-studio/frontend/api")
     endif()
 
     set(SIMDE_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/deps/simde")

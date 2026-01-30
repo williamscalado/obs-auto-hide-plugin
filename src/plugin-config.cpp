@@ -3,20 +3,19 @@
 #include <obs-module.h>
 #include <QDir>
 #include <QFileInfo>
-
-#include "plugin-config.hpp"
-#include <QJsonArray>
-#include <obs-module.h>
-#include <QDir>
-#include <QFileInfo>
 #include <filesystem>
 
 void PluginConfig::save_to_file(const QString &filepath) {
   blog(LOG_INFO, "[Auto Hide] Tentando salvar config em: %s", filepath.toUtf8().constData());
 
   // Usar std::filesystem para evitar problemas de ABI com QDir::mkpath no macOS
+  std::filesystem::path path;
+#ifdef _WIN32
+  path = std::filesystem::path(filepath.toStdWString());
+#else
   QByteArray pathBytes = filepath.toUtf8();
-  std::filesystem::path path(pathBytes.constData());
+  path = std::filesystem::path(pathBytes.constData());
+#endif
   std::filesystem::path dir_path = path.parent_path();
 
   std::error_code ec;

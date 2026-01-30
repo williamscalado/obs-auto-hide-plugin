@@ -5,6 +5,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonValue>
+#include <QRegularExpression>
 
 HolyricsClient::HolyricsClient(QObject *parent) : QObject(parent) {
   network_manager = new QNetworkAccessManager(this);
@@ -152,7 +153,27 @@ bool HolyricsClient::detect_verse(const QString &raw_data) {
                     }
                     return true;
                 }
-                return type.compare("BIBLE", Qt::CaseInsensitive) == 0;
+
+                bool is_bible = type.compare("BIBLE", Qt::CaseInsensitive) == 0;
+                if (!is_bible) return false;
+
+                // Verificar se há texto real (ignorando tags HTML)
+                if (map.contains("text")) {
+                    QString text = map.value("text").toString();
+                    // Remover tags HTML (<...>)
+                    static QRegularExpression html_tag_re("<[^>]*>");
+                    QString plain_text = text.replace(html_tag_re, "");
+                    
+                    // Remover entidades comuns que podem sobrar
+                    plain_text.replace("&nbsp;", " ", Qt::CaseInsensitive);
+                    
+                    if (plain_text.trimmed().isEmpty()) {
+                         blog(LOG_INFO, "[Auto Hide DEBUG] Tipo é BIBLE, mas texto está vazio (F9?) -> Ignorando.");
+                         return false;
+                    }
+                }
+                
+                return true;
 
             } else {
 
