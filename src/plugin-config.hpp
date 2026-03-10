@@ -7,7 +7,10 @@
 #include <QStringList>
 
 struct PluginConfig {
-  // Holyrics
+  // Client selection
+  QString client_type = "Holyrics"; // Padrão: Holyrics
+
+  // Connection
   QString holyrics_url = "http://localhost:9000";
   int polling_interval_ms = 1000;
 
@@ -20,6 +23,7 @@ struct PluginConfig {
   int action_delay_ms = 150;
   bool show_notifications = true;
   bool auto_activate = false; // Padrão: DESLIGADO
+  bool auto_transition = true; // Acionar transição automaticamente no modo estúdio
   bool disable_in_music = false; // Padrão: DESLIGADO
 
   // Métodos

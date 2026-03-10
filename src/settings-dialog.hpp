@@ -33,6 +33,7 @@ private:
   QNetworkAccessManager *network_manager;
 
   // UI Components
+  QComboBox *client_type_combo;
   QLineEdit *url_input;
   QSpinBox *interval_input;
   QPushButton *test_button;
@@ -46,6 +47,7 @@ private:
   QCheckBox *notifications_check;
   QCheckBox *auto_activate_check;
   QCheckBox *disable_in_music_check;
+  QCheckBox *auto_transition_check;
 
   void setup_ui();
   void load_current_values();

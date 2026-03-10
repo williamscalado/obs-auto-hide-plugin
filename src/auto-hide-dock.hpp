@@ -1,6 +1,6 @@
 #pragma once
 
-#include "holyrics-client.hpp"
+#include "presentation-client.hpp"
 #include "plugin-config.hpp"
 #include "scene-controller.hpp"
 #include <QDockWidget>
@@ -14,7 +14,7 @@ class AutoHideDockWidget : public QWidget {
   Q_OBJECT
 
 public:
-  explicit AutoHideDockWidget(PluginConfig &config, HolyricsClient *client,
+  explicit AutoHideDockWidget(PluginConfig &config, IPresentationClient **client_ptr,
                               SceneController *controller,
                               QWidget *parent = nullptr);
   ~AutoHideDockWidget() override;
@@ -30,11 +30,12 @@ private slots:
 
 private:
   PluginConfig &config;
-  HolyricsClient *holyrics_client;
+  IPresentationClient **active_client_ptr;
   SceneController *scene_controller;
 
   // UI Elements
   QLabel *connection_status_label;
+  QLabel *client_info_label;
   QPushButton *toggle_button;
   QLabel *status_label;
   QLabel *last_event_label;

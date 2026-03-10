@@ -34,10 +34,12 @@ public:
 
   // Configuração
   void set_action_delay(int ms);
+  void set_auto_transition(bool enabled);
 
 private:
   std::map<QString, SourceState> saved_states;
   int action_delay_ms = 150;
+  bool auto_transition = true;
 
   void save_current_state(const QStringList &source_names);
 };

@@ -6,10 +6,10 @@
 #include <util/bmem.h>
 
 AutoHideDockWidget::AutoHideDockWidget(PluginConfig &config,
-                                       HolyricsClient *client,
+                                       IPresentationClient **client_ptr,
                                        SceneController *controller,
                                        QWidget *parent)
-    : QWidget(parent), config(config), holyrics_client(client),
+    : QWidget(parent), config(config), active_client_ptr(client_ptr),
       scene_controller(controller) {
   setup_ui();
   update_ui_state();
@@ -21,7 +21,8 @@ void AutoHideDockWidget::setup_ui() {
   QVBoxLayout *main_layout = new QVBoxLayout(this);
 
   // Header Status
-  connection_status_label = new QLabel("● Holyrics: Desconectado", this);
+  QString softwareName = config.client_type;
+  connection_status_label = new QLabel("● " + softwareName + ": Desconectado", this);
   main_layout->addWidget(connection_status_label);
 
   // Main Toggle Button
@@ -58,15 +59,17 @@ void AutoHideDockWidget::setup_ui() {
   connect(settings_button, &QPushButton::clicked, this,
           &AutoHideDockWidget::open_settings);
 
-  // Credits
-  QLabel *credits_label = new QLabel("Desenvolvido por: Williams Calado", this);
-  credits_label->setAlignment(Qt::AlignCenter);
-  credits_label->setMinimumHeight(20); // Forçar altura mínima
-  credits_label->setStyleSheet("QLabel { color: #888; font-size: 11px; margin-top: 10px; font-weight: bold; }");
-  main_layout->addWidget(credits_label);
+  // Client Info
+  client_info_label = new QLabel("Cliente Atual: " + config.client_type, this);
+  client_info_label->setAlignment(Qt::AlignCenter);
+  client_info_label->setMinimumHeight(20); // Forçar altura mínima
+  client_info_label->setStyleSheet("QLabel { color: #888; font-size: 11px; margin-top: 10px; font-weight: bold; }");
+  main_layout->addWidget(client_info_label);
 }
 
 void AutoHideDockWidget::update_ui_state() {
+  client_info_label->setText("Cliente Atual: " + config.client_type);
+
   if (plugin_active) {
     // Estilo ATIVO (Vermelho para parar)
     toggle_button->setText("DESATIVAR PLUGIN");
@@ -83,7 +86,7 @@ void AutoHideDockWidget::update_ui_state() {
     status_label->setText("Status: ✅ Ativo - Monitorando");
     sources_group->setVisible(true);
     update_sources_list();
-    connection_status_label->setText("🟢 Holyrics: Conectado");
+    connection_status_label->setText("🟢 " + config.client_type + ": Conectado");
   } else {
     // Estilo INATIVO (Verde para iniciar)
     toggle_button->setText("ATIVAR PLUGIN");
@@ -100,7 +103,7 @@ void AutoHideDockWidget::update_ui_state() {
     status_label->setText("Status: ⚪ Desativado");
     sources_group->setVisible(false);
     last_event_label->setText("");
-    connection_status_label->setText("● Holyrics: Desconectado");
+    connection_status_label->setText("● " + config.client_type + ": Desconectado");
   }
 }
 
@@ -129,10 +132,14 @@ void AutoHideDockWidget::set_active(bool active, bool restore_state) {
     }
 
     plugin_active = true;
-    holyrics_client->connect(config.holyrics_url);
+    if (*active_client_ptr) {
+        (*active_client_ptr)->connect(config.holyrics_url);
+    }
   } else {
     plugin_active = false;
-    holyrics_client->disconnect();
+    if (*active_client_ptr) {
+        (*active_client_ptr)->disconnect();
+    }
     if (restore_state) {
         scene_controller->restore_previous_state();
     }
@@ -150,18 +157,21 @@ void AutoHideDockWidget::open_settings() {
       bfree(config_path);
     }
 
-    // Se estava ativo, reinicia conexão para aplicar nova URL/intervalo
-    if (plugin_active) {
-      holyrics_client->disconnect();
-      holyrics_client->set_polling_interval(config.polling_interval_ms);
-      holyrics_client->set_disable_in_music(config.disable_in_music);
-      holyrics_client->connect(config.holyrics_url);
+    // Se estava ativo, será gerenciado pelo plugin_main,
+    // que receberá nosso sinal via config nova e precisará reiniciar se mudar o software.
+    // Mas temporariamente, aplicamos aos campos se não mudou:
+
+    if (plugin_active && *active_client_ptr) {
+      // Reconecta com as novas portas dentro do mesmo instanciamento (se não trocou de Client)
+      (*active_client_ptr)->disconnect();
+      // NOTA: set_polling_interval foi deixado apenas no HolyricsClient, precisamos castar...
+      // Como não criamos virtual no IPresentation, o PluginMain que instanciará.
+      // O pluginMain deve ler de novo a config quando dialog fechar! Vamos retornar à isso logo!
+
+      (*active_client_ptr)->connect(config.holyrics_url);
 
       scene_controller->set_action_delay(config.action_delay_ms);
       update_sources_list();
-    } else {
-        // Mesmo se não estiver ativo, atualiza a config para quando ativar
-        holyrics_client->set_disable_in_music(config.disable_in_music);
     }
   }
 }
@@ -177,8 +187,8 @@ void AutoHideDockWidget::update_last_event(bool verse_visible) {
 
 void AutoHideDockWidget::update_connection_status(bool connected) {
   if (connected) {
-    connection_status_label->setText("🟢 Holyrics: Conectado");
+    connection_status_label->setText("🟢 " + config.client_type + ": Conectado");
   } else {
-    connection_status_label->setText("🔴 Holyrics: Sem conexão");
+    connection_status_label->setText("🔴 " + config.client_type + ": Sem conexão");
   }
 }

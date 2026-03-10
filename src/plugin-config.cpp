@@ -74,11 +74,12 @@ QJsonObject PluginConfig::to_json() const {
   QJsonObject root;
   root["version"] = "1.0.0";
 
-  // Holyrics
-  QJsonObject holyrics;
-  holyrics["url"] = holyrics_url;
-  holyrics["polling_interval"] = polling_interval_ms;
-  root["holyrics"] = holyrics;
+  // Connection
+  QJsonObject connection;
+  connection["client_type"] = client_type;
+  connection["url"] = holyrics_url;
+  connection["polling_interval"] = polling_interval_ms;
+  root["connection"] = connection;
 
   // Plugin
   QJsonObject plugin;
@@ -101,17 +102,26 @@ QJsonObject PluginConfig::to_json() const {
   behavior["restore_previous_state"] = restore_previous_state;
   behavior["action_delay_ms"] = action_delay_ms;
   behavior["show_notifications"] = show_notifications;
+  behavior["auto_transition"] = auto_transition;
   root["behavior"] = behavior;
 
   return root;
 }
 
 void PluginConfig::from_json(const QJsonObject &json) {
-  if (json.contains("holyrics")) {
+  if (json.contains("connection")) {
+    QJsonObject connection = json["connection"].toObject();
+    client_type = connection["client_type"].toString(client_type);
+    holyrics_url = connection["url"].toString(holyrics_url);
+    polling_interval_ms =
+        connection["polling_interval"].toInt(polling_interval_ms);
+  } else if (json.contains("holyrics")) {
+    // Backwards compatibility
     QJsonObject holyrics = json["holyrics"].toObject();
     holyrics_url = holyrics["url"].toString(holyrics_url);
     polling_interval_ms =
         holyrics["polling_interval"].toInt(polling_interval_ms);
+    client_type = "Holyrics";
   }
 
   if (json.contains("plugin")) {
@@ -138,5 +148,6 @@ void PluginConfig::from_json(const QJsonObject &json) {
     action_delay_ms = behavior["action_delay_ms"].toInt(action_delay_ms);
     show_notifications =
         behavior["show_notifications"].toBool(show_notifications);
+    auto_transition = behavior["auto_transition"].toBool(auto_transition);
   }
 }

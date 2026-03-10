@@ -8,6 +8,8 @@ SceneController::~SceneController() {}
 
 void SceneController::set_action_delay(int ms) { action_delay_ms = ms; }
 
+void SceneController::set_auto_transition(bool enabled) { auto_transition = enabled; }
+
 QStringList SceneController::get_available_scenes() {
   QStringList scenes;
   struct obs_frontend_source_list source_list = {};
@@ -81,13 +83,17 @@ void SceneController::hide_sources(const QStringList &source_names) {
 
   // Usar QTimer::singleShot para debouncing/delay
   QTimer::singleShot(action_delay_ms, [this, source_names]() {
-    obs_source_t *current_scene_source = obs_frontend_get_current_scene();
-    if (!current_scene_source)
+    bool is_studio = obs_frontend_preview_program_mode_active();
+    obs_source_t *target_scene_source = (is_studio && auto_transition)
+                                            ? obs_frontend_get_current_preview_scene()
+                                            : obs_frontend_get_current_scene();
+
+    if (!target_scene_source)
       return;
 
-    obs_scene_t *scene = obs_scene_from_source(current_scene_source);
+    obs_scene_t *scene = obs_scene_from_source(target_scene_source);
     if (!scene) {
-      obs_source_release(current_scene_source);
+      obs_source_release(target_scene_source);
       return;
     }
 
@@ -101,23 +107,31 @@ void SceneController::hide_sources(const QStringList &source_names) {
       }
     }
 
-    obs_source_release(current_scene_source);
+    obs_source_release(target_scene_source);
 
     if (count > 0) {
       blog(LOG_INFO, "[Auto Hide] Escondeu %d fontes", count);
+      if (is_studio && auto_transition) {
+          obs_frontend_preview_program_trigger_transition();
+          blog(LOG_INFO, "[Auto Hide] Acionada transição do Modo Estúdio");
+      }
     }
   });
 }
 
 void SceneController::restore_previous_state() {
   QTimer::singleShot(action_delay_ms, [this]() {
-    obs_source_t *current_scene_source = obs_frontend_get_current_scene();
-    if (!current_scene_source)
+    bool is_studio = obs_frontend_preview_program_mode_active();
+    obs_source_t *target_scene_source = (is_studio && auto_transition)
+                                            ? obs_frontend_get_current_preview_scene()
+                                            : obs_frontend_get_current_scene();
+
+    if (!target_scene_source)
       return;
 
-    obs_scene_t *scene = obs_scene_from_source(current_scene_source);
+    obs_scene_t *scene = obs_scene_from_source(target_scene_source);
     if (!scene) {
-      obs_source_release(current_scene_source);
+      obs_source_release(target_scene_source);
       return;
     }
 
@@ -134,35 +148,55 @@ void SceneController::restore_previous_state() {
       }
     }
 
-    obs_source_release(current_scene_source);
+    obs_source_release(target_scene_source);
 
     if (count > 0) {
       blog(LOG_INFO, "[Auto Hide] Restaurou %d fontes", count);
+      if (is_studio && auto_transition) {
+          obs_frontend_preview_program_trigger_transition();
+          blog(LOG_INFO, "[Auto Hide] Acionada transição do Modo Estúdio");
+      }
     }
   });
 }
 
 void SceneController::show_all_sources(const QStringList &source_names) {
   QTimer::singleShot(action_delay_ms, [this, source_names]() {
-    obs_source_t *current_scene_source = obs_frontend_get_current_scene();
-    if (!current_scene_source)
+    bool is_studio = obs_frontend_preview_program_mode_active();
+    obs_source_t *target_scene_source = (is_studio && auto_transition)
+                                            ? obs_frontend_get_current_preview_scene()
+                                            : obs_frontend_get_current_scene();
+
+    if (!target_scene_source)
       return;
 
-    obs_scene_t *scene = obs_scene_from_source(current_scene_source);
+    obs_scene_t *scene = obs_scene_from_source(target_scene_source);
     if (!scene) {
-      obs_source_release(current_scene_source);
+      obs_source_release(target_scene_source);
       return;
     }
 
+    int count = 0; // Initialize count for this function
     for (const QString &name : source_names) {
       obs_sceneitem_t *item =
           obs_scene_find_source(scene, name.toUtf8().constData());
       if (item) {
-        obs_sceneitem_set_visible(item, true);
+        if (!obs_sceneitem_visible(item)) {
+          obs_sceneitem_set_visible(item, true);
+          count++;
+        }
       }
     }
 
-    obs_source_release(current_scene_source);
+    obs_source_release(target_scene_source);
+
+    if (count > 0) {
+      blog(LOG_INFO, "[Auto Hide] Mostrou %d fontes", count); // Added blog message
+      if (is_studio && auto_transition) {
+          obs_frontend_preview_program_trigger_transition();
+          blog(LOG_INFO, "[Auto Hide] Acionada transição do Modo Estúdio");
+      }
+    }
   });
 }
 

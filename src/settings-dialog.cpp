@@ -177,6 +177,13 @@ void SettingsDialog::setup_ui() {
     form_holyrics->setHorizontalSpacing(15);
     form_holyrics->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
 
+    client_type_combo = new QComboBox(tab_connection);
+    client_type_combo->addItem("Holyrics");
+    client_type_combo->addItem("ProPresent");
+    client_type_combo->setMinimumWidth(300);
+    client_type_combo->setCursor(Qt::PointingHandCursor);
+    form_holyrics->addRow("Software:", client_type_combo);
+
     url_input = new QLineEdit(tab_connection);
     url_input->setPlaceholderText("http://localhost:9000");
     url_input->setMinimumWidth(300);
@@ -294,6 +301,10 @@ void SettingsDialog::setup_ui() {
     disable_in_music_check = new QCheckBox("Pausar monitoramento se for música", tab_behavior);
     layout_behavior->addWidget(disable_in_music_check);
 
+    auto_transition_check = new QCheckBox("Acionar transição automaticamente (Modo Estúdio)", tab_behavior);
+    auto_transition_check->setToolTip("Se o Modo Estúdio estiver ligado, prepara as fontes na cena Preview e transiciona automaticamente para o Ao Vivo.");
+    layout_behavior->addWidget(auto_transition_check);
+
     layout_behavior_tab->addWidget(group_behavior);
     layout_behavior_tab->addStretch();
 
@@ -326,6 +337,7 @@ void SettingsDialog::setup_ui() {
 }
 
 void SettingsDialog::load_current_values() {
+    client_type_combo->setCurrentText(config.client_type);
     url_input->setText(config.holyrics_url);
     interval_input->setValue(config.polling_interval_ms);
 
@@ -337,6 +349,7 @@ void SettingsDialog::load_current_values() {
     notifications_check->setChecked(config.show_notifications);
     auto_activate_check->setChecked(config.auto_activate);
     disable_in_music_check->setChecked(config.disable_in_music);
+    auto_transition_check->setChecked(config.auto_transition);
 }
 
 void SettingsDialog::on_scene_changed(const QString &scene_name) {
@@ -361,7 +374,13 @@ void SettingsDialog::on_scene_changed(const QString &scene_name) {
 void SettingsDialog::test_connection() {
     QString url = url_input->text();
     if (url.endsWith("/")) url.chop(1);
-    url += "/view/text";
+    
+    QString client_type = client_type_combo->currentText();
+    if (client_type == "Holyrics") {
+        url += "/view/text";
+    } else if (client_type == "ProPresent") {
+        url += "/v1/presentation/active";
+    }
 
     test_button->setEnabled(false);
     test_button->setText("Testando...");
@@ -373,7 +392,7 @@ void SettingsDialog::test_connection() {
 
     QNetworkReply *reply = network_manager->get(request);
 
-    connect(reply, &QNetworkReply::finished, [this, reply]() {
+    connect(reply, &QNetworkReply::finished, [this, reply, client_type]() {
         test_button->setEnabled(true);
         test_button->setText("Testar Conexão");
 
@@ -386,8 +405,19 @@ void SettingsDialog::test_connection() {
             status_label->setText("✅ Conectado com sucesso");
             status_label->setStyleSheet("font-weight: bold; color: #55ff55;");
 
-            bool has_verse = html.contains("class=\"bible_slide") || html.contains("<desc>");
-            QString msg = has_verse ? "📖 Versículo detectado." : "✓ Nenhum versículo no momento.";
+            bool has_verse = false;
+            
+            if (client_type == "Holyrics") {
+                has_verse = html.contains("class=\"bible_slide") || html.contains("<desc>");
+            } else if (client_type == "ProPresent") {
+                QJsonDocument doc = QJsonDocument::fromJson(html.toUtf8());
+                if (!doc.isNull() && doc.isObject()) {
+                    QJsonValue presentationVal = doc.object().value("presentation");
+                    has_verse = !presentationVal.isNull();
+                }
+            }
+            
+            QString msg = has_verse ? "📖 Item/Versículo detectado em exibição." : "✓ Nenhum item/versículo ativo no momento.";
             QMessageBox::information(this, "Sucesso", "Conexão OK!\n" + msg);
         }
         reply->deleteLater();
@@ -395,6 +425,7 @@ void SettingsDialog::test_connection() {
 }
 
 void SettingsDialog::save() {
+    config.client_type = client_type_combo->currentText();
     config.holyrics_url = url_input->text();
     config.polling_interval_ms = interval_input->value();
     config.monitored_scene = scene_combo->currentText();
@@ -412,6 +443,7 @@ void SettingsDialog::save() {
     config.show_notifications = notifications_check->isChecked();
     config.auto_activate = auto_activate_check->isChecked();
     config.disable_in_music = disable_in_music_check->isChecked();
+    config.auto_transition = auto_transition_check->isChecked();
 
     accept();
 }

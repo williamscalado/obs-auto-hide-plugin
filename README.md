@@ -1,22 +1,23 @@
 # git remote add origin git@github.com:williamscalado/obs-auto-hide-plugin.git
 
-Este é um plugin nativo para **OBS Studio**, desenvolvido em C++ com Qt6. Ele automatiza a visibilidade de fontes e cenas no OBS baseando-se no conteúdo projetado pelo software **Holyrics**.
+Este é um plugin nativo para **OBS Studio**, desenvolvido em C++ com Qt6. Ele automatiza a visibilidade de fontes e cenas no OBS baseando-se no conteúdo projetado pelos softwares **Holyrics** ou **ProPresent**.
 
-O objetivo principal é melhorar a transmissão ao vivo ou gravação, escondendo automaticamente elementos visuais (como lower thirds, logomarcas ou câmeras) quando um **versículo bíblico** é exibido no telão, e restaurando-os quando o versículo sai de cena.
+O objetivo principal é melhorar a transmissão ao vivo ou gravação, escondendo automaticamente elementos visuais (como lower thirds, logomarcas ou câmeras) quando um **versículo bíblico ou slide de apresentação** é exibido no telão, e restaurando-os quando o item sai de cena.
 
 ---
 
 ## 🚀 O que este app faz
 
-O plugin atua como um **cliente HTTP** que monitora o servidor local do Holyrics. Ele:
+O plugin atua como um **cliente HTTP** que monitora o servidor local ou remoto do Holyrics ou ProPresent. Ele:
 
-1.  Consulta periodicamente o status da projeção.
-2.  Analisa o HTML retornado para identificar se o conteúdo é uma Bíblia, uma Música ou outro tipo de slide.
+1.  Consulta periodicamente o status da projeção via API.
+2.  Analisa o payload retornado para identificar se há conteúdo sendo exibido.
 3.  Interage diretamente com a API do OBS (`libobs`) para alterar a visibilidade de fontes específicas em uma cena monitorada.
 
 ### Principais Funcionalidades
 -   **Monitoramento em Tempo Real:** Conexão via HTTP Polling configurável.
--   **Detecção Inteligente:** Diferencia versículos bíblicos de letras de música.
+-   **Multi-Client:** Suporte nativo às APIs de apresentação do **Holyrics** e **ProPresent**.
+-   **Transição Automática (Studio Mode):** Aciona autonomamente o botão de "Transição" caso o Modo Estúdio do OBS esteja aberto, evitando cortes secos (*Fade* orgânico).
 -   **Controle Granular:** Permite escolher exatamente quais fontes esconder (ex: esconder apenas a fonte "Logo" mas manter a "Câmera").
 -   **Restauração de Estado:** Opcionalmente restaura a visibilidade das fontes para como estavam antes da automação.
 -   **Debounce/Delay:** Configuração de tempo de espera para evitar "piscas" na tela em trocas rápidas de slide.
@@ -37,12 +38,15 @@ O plugin atua como um **cliente HTTP** que monitora o servidor local do Holyrics
 
 ### Configuração
 1.  Abra o OBS Studio.
-2.  No menu superior, vá em **Docks (Docas)** > **Auto Hide Scenes**.
-3.  Uma janela de configuração abrirá. Configure:
-    -   **URL Base:** Endereço do Holyrics (padrão `http://localhost:9000`).
-    -   **Cena Monitorada:** A cena onde estão as fontes que você quer controlar.
-    -   **Fontes:** Marque as caixas das fontes que devem sumir ao aparecer um versículo.
-4.  Clique em **Salvar**.
+2.  No menu superior, vá em **Docks (Docas)** > **Auto Hide Scenes** e clique no ícone de "Configurações" ⚙️ no painel.
+3.  Uma janela de configuração abrirá. Na aba **Conexão**, configure:
+    -   **Cliente:** Escolha entre Holyrics e ProPresent.
+    -   **URL Base:** Endereço do software (padrão `http://localhost:9000` para Holyrics, ou `http://localhost:5050` padrão para servidor customizado).
+4.  Na aba **Cenas**, configure:
+    -   **Cena para Monitorar:** A cena onde estão as fontes que você quer controlar.
+    -   **Fontes:** Marque as caixas das fontes que devem sumir quando o texto for projetado.
+5.  Na aba **Comportamento**, ative opcionalmente a *Restauração de Estado*, *Pausar em Música*, e o *Acionar Transição Automática (Modo Estúdio)*.
+6.  Clique em **Salvar**.
 
 ---
 
@@ -113,27 +117,25 @@ build-windows.bat
 
 ## 📡 Integração e Endpoints
 
-Este plugin não expõe uma API; ele consome a API/View do Holyrics. Abaixo detalhamos como essa comunicação é feita para fins de debug e entendimento.
+Este plugin não expõe uma API; ele consome a API de softwares. Abaixo detalhamos os endpoints usados para comunicação:
 
-### Endpoint Consumido (Holyrics)
+### Endpoints Consumidos
 
-| Método | Endpoint | Descrição |
-| :--- | :--- | :--- |
-| `GET` | `/view/text` | Retorna o HTML do slide atual exibido no Holyrics. |
+| Software | Método | Endpoint | Resposta (Expectativa) |
+| :--- | :--- | :--- | :--- |
+| **Holyrics** | `GET` | `/view/text` | HTML contendo classes `bible_slide` ou descrições no Node `<desc>`. |
+| **ProPresent** | `GET` | `/v1/presentation/active` | Objeto `JSON` possuindo campo `presentation` root level preenchido. |
 
 ### Lógica de Parsing
-O plugin faz um GET neste endpoint e busca por padrões no HTML retornado:
 
-1.  **Detecção de Bíblia:**
-    -   Procura por classes CSS: `class="bible_slide"`
-    -   Procura por tags específicas: `<desc>` contendo referências.
-2.  **Detecção de Música (opcional):**
-    -   Analisa se o slide contém metadados de música para a funcionalidade "Desativar em música".
+-   **Holyrics**: Busca por `<div class="bible_slide">` ou `<desc>` no corpo HTML. O delay evita capturas temporárias acidentais do operador.
+-   **ProPresent**: Interpreta a árvore do JSON para o slide corrente em modo Presentation e verifica nulidade do campo `presentation.id`. Se o usuário "limpar tela" na igreja, esse valor fica nulo e o plugin retorna o layout original no OBS.
 
-**Exemplo de fluxo:**
-1.  Plugin -> GET `http://localhost:9000/view/text`
-2.  Holyrics -> Retorna HTML `... <div class="bible_slide">João 3:16...`
-3.  Plugin -> Detecta "Bíblia" -> Chama `obs_source_set_enabled(source, false)` nas fontes configuradas.
+**Exemplo de fluxo em Studio Mode:**
+1.  Plugin -> GET API de Presentação / Holyrics
+2.  Cliente -> Retorna carga útil dizendo "Temos um Slide ao Vivo!"
+3.  Plugin -> Oculta localmente a "Logo Principal" na cena **PREVIEW**.
+4.  Plugin -> Chama função `obs_frontend_preview_program_trigger_transition()` executando o fade da live automaticamente.
 
 ---
 

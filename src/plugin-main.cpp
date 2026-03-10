@@ -1,5 +1,6 @@
 #include "auto-hide-dock.hpp"
 #include "holyrics-client.hpp"
+#include "propresent-client.hpp"
 #include "plugin-config.hpp"
 #include "scene-controller.hpp"
 #include <obs-module.h>
@@ -12,39 +13,53 @@ OBS_DECLARE_MODULE()
 class AutoHidePlugin {
 private:
   PluginConfig config;
-  HolyricsClient *holyrics_client;
+  IPresentationClient *active_client = nullptr;
   SceneController *scene_controller;
   AutoHideDockWidget *dock_widget;
 
-public:
-  AutoHidePlugin() {
-    // Inicializar componentes
-    holyrics_client = new HolyricsClient();
-    scene_controller = new SceneController();
-    dock_widget =
-        new AutoHideDockWidget(config, holyrics_client, scene_controller);
+  void setup_client() {
+    // Deleta o anterior se existir
+    if (active_client) {
+        active_client->disconnect();
+        delete active_client;
+        active_client = nullptr;
+    }
 
-    // Configurar callback
-    holyrics_client->on_verse_changed = [this](bool visible) {
+    // Instancia o novo baseado na config
+    if (config.client_type == "ProPresent") {
+        active_client = new ProPresentClient();
+        blog(LOG_INFO, "[Auto Hide] Inicializando ProPresent Client");
+    } else {
+        active_client = new HolyricsClient();
+        blog(LOG_INFO, "[Auto Hide] Inicializando Holyrics Client");
+    }
+
+    // Configurar callbacks
+    active_client->on_verse_changed = [this](bool visible) {
       on_verse_state_changed(visible);
     };
 
-    holyrics_client->on_deactivation_requested = [this]() {
+    active_client->on_deactivation_requested = [this]() {
         if (dock_widget) {
-            // Se for música e estiver configurado para desativar:
-            // 1. Esconde as fontes (câmera), pois a letra deve estar na tela
             scene_controller->hide_sources(config.sources_to_hide);
-            
-            // 2. Desativa o plugin SEM restaurar o estado (para manter escondido)
             dock_widget->set_active(false, false);
-            
             blog(LOG_INFO, "[Auto Hide] Desativação automática (MUSIC): Fontes ocultadas e plugin parado.");
         }
     };
   }
 
+public:
+  AutoHidePlugin() {
+    scene_controller = new SceneController();
+    
+    // O DockWidget precisa do PONTEIRO para onde armazenamos o cliente ativo, 
+    // pois poderemos recriar a instância do cliente abaixo
+    dock_widget =
+        new AutoHideDockWidget(config, &active_client, scene_controller);
+  }
+
   ~AutoHidePlugin() {
-    delete holyrics_client;
+    if (active_client) delete active_client;
     delete scene_controller;
     // dock_widget é deletado pelo OBS ao fechar ou remover dock
   }
@@ -71,6 +86,8 @@ public:
 
   void load_config() {
     char *path_ptr = obs_module_config_path("config.json");
+    QString old_client_type = config.client_type;
+    
     if (path_ptr) {
         QString path = QString(path_ptr);
         blog(LOG_INFO, "[Auto Hide] Carregando configuração de: %s", path_ptr);
@@ -80,10 +97,26 @@ public:
         blog(LOG_WARNING, "[Auto Hide] obs_module_config_path retornou NULL");
     }
 
-    // Aplicar configurações iniciais
-    holyrics_client->set_polling_interval(config.polling_interval_ms);
-    holyrics_client->set_disable_in_music(config.disable_in_music);
+    // Se mudou o client_type, ou se é a primeira vez (active_client nulo), configura o cliente
+    if (!active_client || old_client_type != config.client_type) {
+        setup_client();
+    }
+
+    // Se é Holyrics, ele suporta as configurações estendidas (podemos testar com dynamic_cast pra ser seguros)
+    HolyricsClient* hc = dynamic_cast<HolyricsClient*>(active_client);
+    if (hc) {
+        hc->set_polling_interval(config.polling_interval_ms);
+        hc->set_disable_in_music(config.disable_in_music);
+    } else {
+        ProPresentClient* ppc = dynamic_cast<ProPresentClient*>(active_client);
+        if (ppc) {
+             ppc->set_polling_interval(config.polling_interval_ms);
+             ppc->set_disable_in_music(config.disable_in_music);
+        }
+    }
+
     scene_controller->set_action_delay(config.action_delay_ms);
+    scene_controller->set_auto_transition(config.auto_transition);
 
     // Se ativado automaticamente
     if (config.auto_activate) {
