@@ -56,6 +56,10 @@ public:
     // pois poderemos recriar a instância do cliente abaixo
     dock_widget =
         new AutoHideDockWidget(config, &active_client, scene_controller);
+        
+    dock_widget->on_settings_changed = [this]() {
+        this->apply_settings_change();
+    };
   }
 
   ~AutoHidePlugin() {
@@ -122,6 +126,45 @@ public:
     if (config.auto_activate) {
       dock_widget->set_active(true);
     }
+  }
+
+  void apply_settings_change() {
+    QString actual_client_type = "Holyrics";
+    if (dynamic_cast<ProPresentClient*>(active_client)) {
+        actual_client_type = "ProPresent";
+    }
+
+    bool type_changed = (actual_client_type != config.client_type);
+    
+    // Always recreate if type changed or client is null
+    if (!active_client || type_changed) {
+        setup_client();
+    }
+
+    // Apply specific configs
+    HolyricsClient* hc = dynamic_cast<HolyricsClient*>(active_client);
+    if (hc) {
+        hc->set_polling_interval(config.polling_interval_ms);
+        hc->set_disable_in_music(config.disable_in_music);
+    } else {
+        ProPresentClient* ppc = dynamic_cast<ProPresentClient*>(active_client);
+        if (ppc) {
+             ppc->set_polling_interval(config.polling_interval_ms);
+             ppc->set_disable_in_music(config.disable_in_music);
+        }
+    }
+
+    scene_controller->set_action_delay(config.action_delay_ms);
+    scene_controller->set_auto_transition(config.auto_transition);
+
+    // If it was already active, we must reconnect the new client with the new URL
+    if (dock_widget->is_active() && active_client) {
+        active_client->disconnect(); // safe
+        active_client->connect(config.holyrics_url);
+    }
+    
+    // UI updates
+    dock_widget->update_ui_state(); // need to expose or just rely on existing call
   }
 
   void save_config() {

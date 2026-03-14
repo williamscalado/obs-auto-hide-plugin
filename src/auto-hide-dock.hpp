@@ -9,11 +9,13 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 #include <QWidget>
+#include <functional>
 
 class AutoHideDockWidget : public QWidget {
   Q_OBJECT
 
 public:
+  std::function<void()> on_settings_changed;
   explicit AutoHideDockWidget(PluginConfig &config, IPresentationClient **client_ptr,
                               SceneController *controller,
                               QWidget *parent = nullptr);
@@ -23,6 +25,10 @@ public:
   void set_active(bool active, bool restore_state = true);
   void update_connection_status(bool connected);
   void update_last_event(bool verse_visible);
+  
+  bool is_active() const { return plugin_active; }
+  void update_ui_state();
+  void update_sources_list();
 
 private slots:
   void on_toggle_clicked();
@@ -46,6 +52,4 @@ private:
   bool plugin_active = false;
 
   void setup_ui();
-  void update_ui_state();
-  void update_sources_list();
 };

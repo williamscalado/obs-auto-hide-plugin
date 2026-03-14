@@ -156,23 +156,13 @@ void AutoHideDockWidget::open_settings() {
       config.save_to_file(QString(config_path));
       bfree(config_path);
     }
-
-    // Se estava ativo, será gerenciado pelo plugin_main,
-    // que receberá nosso sinal via config nova e precisará reiniciar se mudar o software.
-    // Mas temporariamente, aplicamos aos campos se não mudou:
-
-    if (plugin_active && *active_client_ptr) {
-      // Reconecta com as novas portas dentro do mesmo instanciamento (se não trocou de Client)
-      (*active_client_ptr)->disconnect();
-      // NOTA: set_polling_interval foi deixado apenas no HolyricsClient, precisamos castar...
-      // Como não criamos virtual no IPresentation, o PluginMain que instanciará.
-      // O pluginMain deve ler de novo a config quando dialog fechar! Vamos retornar à isso logo!
-
-      (*active_client_ptr)->connect(config.holyrics_url);
-
-      scene_controller->set_action_delay(config.action_delay_ms);
-      update_sources_list();
+    // Notificar o plugin principal para recriar o cliente se necessário
+    if (on_settings_changed) {
+        on_settings_changed();
     }
+    
+    // Atualizar a UI com os nomes e status mais recentes
+    update_ui_state();
   }
 }
 
