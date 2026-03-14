@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        os: [windows-latest]
 
     steps:
     - uses: actions/checkout@v4
@@ -41,36 +41,7 @@ jobs:
         git clone --depth 1 https://github.com/simd-everywhere/simde.git
         echo "#define OBS_VERSION \"30.0.2\"" > obs-studio/libobs/obsconfig.h
 
-    # -------------------------------------------------------------------------
-    # MACOS STEPS
-    # -------------------------------------------------------------------------
-    - name: Install Dependencies (macOS)
-      if: runner.os == 'macOS'
-      run: |
-        brew install cmake ninja qt@6 obs
-        echo "/opt/homebrew/opt/qt6/bin" >> $GITHUB_PATH
 
-    - name: Build (macOS)
-      if: runner.os == 'macOS'
-      run: |
-        mkdir build
-        cd build
-        cmake .. \
-          -DCMAKE_PREFIX_PATH="/opt/homebrew/opt/qt6;/opt/homebrew/opt/libobs" \
-          -DCMAKE_BUILD_TYPE=Release
-        cmake --build . --config Release
-
-    - name: Package (macOS)
-      if: runner.os == 'macOS'
-      run: |
-        LIB_FILE=$(find build -type f \( -name "*.dylib" -o -name "*.so" \) | head -n 1)
-
-        if [[ -z "$LIB_FILE" ]]; then
-           ls -R build
-           exit 1
-        fi
-
-        zip -j auto-hide-scenes-macos.zip "$LIB_FILE"
 
     # -------------------------------------------------------------------------
     # WINDOWS STEPS
@@ -195,7 +166,6 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            auto-hide-scenes-macos.zip
             auto-hide-scenes-windows.zip
           draft: false
           prerelease: false
